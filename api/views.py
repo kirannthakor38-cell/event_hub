@@ -48,48 +48,57 @@ from .models import TempUser, User   # <-- make sure models are imported
 
 # -----------------------------------
 # Send OTP Email (Brevo API)
-# -----------------------------------
 def send_otp_email(email, otp):
     config = sib_api_v3_sdk.Configuration()
     config.api_key['api-key'] = BREVO_API_KEY
-    api = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(config))
+    config.host = "https://api.brevo.com/v3"   # REQUIRED for Render deployment
+
+    api = sib_api_v3_sdk.TransactionalEmailsApi(
+        sib_api_v3_sdk.ApiClient(config)
+    )
+
+    email_html = f"""
+    <div style="font-family: Arial; padding: 22px;">
+        <h2 style="color:#1d4ed8; margin-bottom: 6px;">🔐 DNICA – Technova | OTP Verification</h2>
+
+        <p style="font-size: 15px; color:#333; margin-top: 0;">
+            Welcome to <b>Technova</b> powered by <b>IT Club</b> at <b>DNICA</b> 😎.
+            To secure your account and confirm registration, please verify using the OTP below.
+        </p>
+
+        <div style="margin: 22px 0; padding: 18px; background:#f8faff; border: 1px solid #d7e3ff; border-radius: 10px; text-align:center;">
+            <span style="font-size: 15px; color:#444;">Your One-Time Password:</span>
+            <h1 style="font-size: 40px; margin: 8px 0; color:#111; letter-spacing: 4px;"><b>{otp}</b></h1>
+            <p style="font-size: 14px; color:#666; margin: 0;">Valid for <b>10 minutes</b> ⏳ — do not share this code.</p>
+        </div>
+
+        <p style="font-size: 14px; color:#444;">
+            After verification, your account will be activated and you'll gain full access to <b>Technova</b> events —
+            including registrations, participation tracking, and results 🚀.
+        </p>
+
+        <p style="font-size: 14px; color:#444; margin-top: 26px;">
+            If you didn’t request this OTP, you can safely ignore this email.
+        </p>
+
+        <p style="font-size: 14px; color:#444; margin-top: 20px;">
+            Warm regards,<br>
+            <b style="color:#1d4ed8;">IT Club – DNICA</b>
+        </p>
+    </div>
+    """
 
     email_data = sib_api_v3_sdk.SendSmtpEmail(
         subject="🔐 OTP Verification – Event Hub",
-        html_content=f"""
-<div style="font-family: Arial; padding: 22px;">
-    <h2 style="color:#1d4ed8; margin-bottom: 6px;">🔐 DNICA – Technova | OTP Verification</h2>
-
-    <p style="font-size: 15px; color:#333; margin-top: 0;">
-        Welcome to <b>Technova</b> powered by <b>IT Club</b> at <b>DNICA</b> 😎.
-        To secure your account and confirm registration, please verify using the OTP below.
-    </p>
-
-    <div style="margin: 22px 0; padding: 18px; background:#f8faff; border: 1px solid #d7e3ff; border-radius: 10px; text-align:center;">
-        <span style="font-size: 15px; color:#444;">Your One-Time Password:</span>
-        <h1 style="font-size: 40px; margin: 8px 0; color:#111; letter-spacing: 4px;"><b>{otp}</b></h1>
-        <p style="font-size: 14px; color:#666; margin: 0;">Valid for <b>10 minutes</b> ⏳ — please do not share this code.</p>
-    </div>
-
-    <p style="font-size: 14px; color:#444;">
-        After verification, your account will be activated and you'll gain full access to <b>Technova</b> events —
-        including registrations, participation tracking, results  🚀.
-    </p>
-
-    <p style="font-size: 14px; color:#444; margin-top: 26px;">
-        If you didn’t request this OTP, you can safely ignore this email.
-    </p>
-
-    <p style="font-size: 14px; color:#444; margin-top: 20px;">
-        Warm regards,<br>
-        <b style="color:#1d4ed8;">IT Club – DNICA</b>
-    </p>
-</div>
-""",
+        html_content=email_html,
         sender={"name": "Event Hub", "email": "technical.team0004@gmail.com"},
         to=[{"email": email}],
     )
-    api.send_transac_email(email_data)
+
+    try:
+        api.send_transac_email(email_data)
+    except Exception as e:
+        print("EMAIL ERROR:", e)  # prevents Render worker crash
 
 
 # -----------------------------------
@@ -835,3 +844,4 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
