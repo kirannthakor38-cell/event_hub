@@ -15,14 +15,18 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "insecure-dev-key")
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
-# Cloud Run gives dynamic URLs → allow all for now
-ALLOWED_HOSTS = ["*", ".a.run.app"]
+ALLOWED_HOSTS = [
+    "*",
+    "localhost",
+    "127.0.0.1",
+    ".onrender.com",
+]
 
-# Trust Cloud Run reverse proxies
+# Needed for reverse proxy setups (Render)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # -------------------------------------------------------------------
-# STATIC & MEDIA (Important for Cloud Run)
+# STATIC & MEDIA
 # -------------------------------------------------------------------
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
@@ -47,13 +51,13 @@ INSTALLED_APPS = [
 ]
 
 # -------------------------------------------------------------------
-# MIDDLEWARE (Whitenoise added for deployment)
+# MIDDLEWARE (CORS MUST BE FIRST)
 # -------------------------------------------------------------------
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
 
-    # Whitenoise must be directly after SecurityMiddleware
+    # Whitenoise for static files on Render
     "whitenoise.middleware.WhiteNoiseMiddleware",
 
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -64,7 +68,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# Enable Whitenoise compression & caching
+# Whitenoise static compression
 WHITENOISE_USE_FINDERS = True
 
 # -------------------------------------------------------------------
@@ -90,7 +94,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "backend.wsgi.application"
 
 # -------------------------------------------------------------------
-# SQLITE (used only for Django auth/session)
+# DATABASE (SQLite used only for Django auth/session)
 # -------------------------------------------------------------------
 DATABASES = {
     "default": {
@@ -100,11 +104,14 @@ DATABASES = {
 }
 
 # -------------------------------------------------------------------
-# MongoDB Atlas
+# MongoDB Atlas Connection
 # -------------------------------------------------------------------
 connect(
     db="college_app",
-    host="mongodb+srv://technicalteam0004:Radhe%405671@cluster0.sj5adex.mongodb.net/college_app?retryWrites=true&w=majority",
+    host=os.getenv(
+        "MONGODB_URI",
+        "mongodb+srv://technicalteam0004:Radhe%405671@cluster0.sj5adex.mongodb.net/college_app?retryWrites=true&w=majority"
+    )
 )
 
 # -------------------------------------------------------------------
@@ -117,23 +124,28 @@ REST_FRAMEWORK = {
 }
 
 # -------------------------------------------------------------------
-# CORS (React frontend)
+# CORS (FINAL FIXED VERSION — DO NOT CHANGE)
 # -------------------------------------------------------------------
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
-# Allow Cloud Run frontend or Firebase Hosting
-CORS_ALLOWED_ORIGINS += [
-    "https://*.web.app",
-    "https://*.firebaseapp.com",
-    "https://*.a.run.app",
-]
-
-CORS_ALLOW_ALL_ORIGINS = True  # For API-based apps
+CORS_ALLOW_ALL_ORIGINS = True   # Fixes 90% of Render/React issues
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "origin",
+    "user-agent",
+    "dnt",
+    "cache-control",
+    "x-requested-with",
+]
+
+CORS_EXPOSE_HEADERS = ["Content-Type"]
+
+# -------------------------------------------------------------------
+# COOKIES / CSRF (Safe for API-based apps)
+# -------------------------------------------------------------------
 SESSION_COOKIE_SAMESITE = "None"
 SESSION_COOKIE_SECURE = True
 
@@ -163,14 +175,14 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # -------------------------------------------------------------------
-# JWT (your original config)
+# JWT
 # -------------------------------------------------------------------
 JWT_SECRET = SECRET_KEY
 JWT_ALGORITHM = "HS256"
 JWT_EXP_DELTA_SECONDS = 3600  
 
 # -------------------------------------------------------------------
-# OTP Cache
+# CACHE FOR OTP
 # -------------------------------------------------------------------
 CACHES = {
     "default": {
@@ -180,13 +192,14 @@ CACHES = {
 }
 
 # -------------------------------------------------------------------
-# EMAIL (Gmail App Password)
+# EMAIL CONFIG (Gmail SMTP)
 # -------------------------------------------------------------------
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = "technical.team0004@gmail.com"
-EMAIL_HOST_PASSWORD = "ueqk gmve casx enuq"  # App Password
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "technical.team0004@gmail.com")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "ueqk gmve casx enuq")
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
