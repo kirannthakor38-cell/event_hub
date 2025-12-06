@@ -35,104 +35,99 @@ import re
 from .models import User, TempUser
 
 
+import random
+from django.core.cache import cache
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+import sib_api_v3_sdk
+from backend.settings import BREVO_API_KEY
+from .models import TempUser, User   # <-- make sure models are imported
+
+
+# -----------------------------------
+# Send OTP Email (Brevo API)
+# -----------------------------------
+def send_otp_email(email, otp):
+    config = sib_api_v3_sdk.Configuration()
+    config.api_key['api-key'] = BREVO_API_KEY
+    api = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(config))
+
+    email_data = sib_api_v3_sdk.SendSmtpEmail(
+        subject="🔐 OTP Verification – Event Hub",
+        html_content=f"""
+<div style="font-family: Arial; padding: 22px;">
+    <h2 style="color:#1d4ed8; margin-bottom: 6px;">🔐 DNICA – Technova | OTP Verification</h2>
+
+    <p style="font-size: 15px; color:#333; margin-top: 0;">
+        Welcome to <b>Technova</b> powered by <b>IT Club</b> at <b>DNICA</b> 😎.
+        To secure your account and confirm registration, please verify using the OTP below.
+    </p>
+
+    <div style="margin: 22px 0; padding: 18px; background:#f8faff; border: 1px solid #d7e3ff; border-radius: 10px; text-align:center;">
+        <span style="font-size: 15px; color:#444;">Your One-Time Password:</span>
+        <h1 style="font-size: 40px; margin: 8px 0; color:#111; letter-spacing: 4px;"><b>{otp}</b></h1>
+        <p style="font-size: 14px; color:#666; margin: 0;">Valid for <b>10 minutes</b> ⏳ — please do not share this code.</p>
+    </div>
+
+    <p style="font-size: 14px; color:#444;">
+        After verification, your account will be activated and you'll gain full access to <b>Technova</b> events —
+        including registrations, participation tracking, results  🚀.
+    </p>
+
+    <p style="font-size: 14px; color:#444; margin-top: 26px;">
+        If you didn’t request this OTP, you can safely ignore this email.
+    </p>
+
+    <p style="font-size: 14px; color:#444; margin-top: 20px;">
+        Warm regards,<br>
+        <b style="color:#1d4ed8;">IT Club – DNICA</b>
+    </p>
+</div>
+""",
+        sender={"name": "Event Hub", "email": "technical.team0004@gmail.com"},
+        to=[{"email": email}],
+    )
+    api.send_transac_email(email_data)
+
+
+# -----------------------------------
+# SIGNUP → Create TempUser & Send OTP
+# -----------------------------------
 @api_view(["POST"])
 def signup(request):
     data = request.data
 
-    username = data.get("username")
-    rollno = data.get("rollno")
     email = data.get("email")
-    mobile = data.get("mobile")
-    password = data.get("password")
+    if not email:
+        return Response({"error": "Email is required"}, status=400)
 
-    # 1) Validate Roll No format
-    if not re.match(r"^\d{2}(BCA|IT)\d{3}$", rollno.upper()):
-        return Response({"error": "Roll no must be like 23BCA119 or 23IT131"}, status=400)
-
-    # 2) Prevent duplicate registration
-    if User.objects(rollno=rollno.upper()).first():
-        return Response({"error": "Roll number already exists"}, status=400)
-    if User.objects(email=email).first():
-        return Response({"error": "Email already exists"}, status=400)
-    if User.objects(mobile=mobile).first():
-        return Response({"error": "Mobile number already exists"}, status=400)
-
-    # 3) Remove previous OTP request for same email
+    # Remove any previous pending OTP for same email
     TempUser.objects(email=email).delete()
 
-    # 4) Generate OTP
-    otp = random.randint(100000, 999999)
-
-    # 5) HTML Email Template (Brevo-friendly)
-    html_message = f"""
-<div style="font-family: 'Segoe UI', Arial, sans-serif; padding: 32px; border-radius: 12px; background: #f6f9ff; border: 1px solid #d8e4ff; line-height: 1.7;">
-    
-    <h2 style="color:#003a9e; margin-bottom: 4px; font-size: 26px;">
-        🔐 TechNova Fest – OTP Verification
-    </h2>
-    <p style="font-size: 16px; margin-top: 6px;">
-        Hello <b style="color:#000;">{username}</b>,
-    </p>
-
-    <p style="font-size: 16px; margin-top: 12px;">
-        Thank you for signing up for <b style="color:#003a9e;">TechNova Fest 2025</b>, proudly organized by 
-        <b>IT Club • DNICA</b>. We appreciate your interest in being part of this dynamic celebration of
-        innovation, creativity, and technology.
-    </p>
-
-    <div style="margin: 32px 0; text-align: center;">
-        <p style="font-size: 17px; margin-bottom: 14px;">
-            Your <b>One-Time Password (OTP)</b) for secure verification is:
-        </p>
-        <div style="background: #fff6f6; border: 2px solid #e25b5b; padding: 14px 30px; display: inline-block; border-radius: 10px;">
-            <h1 style="color:#c82323; font-size: 44px; letter-spacing: 6px; margin: 0;">
-                {otp}
-            </h1>
-        </div>
-        <p style="font-size: 15px; margin-top: 12px; color:#444;">
-            ⏳ This OTP is valid for the next <b>5 minutes</b>.
-        </p>
-    </div>
-
-    <p style="font-size: 15px; color:#c82323; margin-top: -10px;">
-        ⚠ <b>Security Notice:</b> Do not share this code with anyone. It is strictly personal and confidential.
-    </p>
-
-    <br>
-    <p style="font-size: 15px; margin-bottom: 6px;">Warm regards,</p>
-    <p style="font-size: 15px; margin-top: 0; font-weight: bold; color:#003a9e;">
-        IT Club • Digital Innovation & Computing Association (DNiCA)
-    </p>
-</div>
-"""
-
-
-    # Send Email (Brevo SMTP)
-    try:
-        send_mail(
-            subject="TechNova Fest – OTP Verification (IT Club • DNiCA)",
-            message=strip_tags(html_message),  # fallback plain text
-            html_message=html_message,
-            from_email=None,                   # uses DEFAULT_FROM_EMAIL automatically
-            recipient_list=[email],
-            fail_silently=False,
-        )
-    except Exception as e:
-        return Response({"error": "Email sending failed. Try again later."}, status=500)
-
-    # 6) Save temporary data
+    # Save signup info temporarily
+    otp = str(random.randint(100000, 999999))
     TempUser.objects.create(
-        username=username,
-        rollno=rollno.upper(),
+        username=data.get("username"),
+        rollno=data.get("rollno"),
         email=email,
-        mobile=mobile,
-        password=password,
+        mobile=data.get("mobile"),
+        password=data.get("password"),
         otp=otp
     )
 
-    return Response({"msg": "OTP sent to your email"})
+    try:
+        send_otp_email(email, otp)
+    except Exception as e:
+        return Response({"error": "Failed to send OTP email", "details": str(e)}, status=500)
+
+    return Response({"message": "OTP sent to email"})
 
 
+# -----------------------------------
+# VERIFY OTP → Move TempUser → User
+# -----------------------------------
 @api_view(["POST"])
 def verify_otp(request):
     email = request.data.get("email")
@@ -145,7 +140,7 @@ def verify_otp(request):
     if str(temp.otp) != str(otp):
         return Response({"error": "Invalid OTP"}, status=400)
 
-    # 1) Create final user
+    # Create final user
     user = User(
         username=temp.username,
         rollno=temp.rollno,
@@ -155,7 +150,7 @@ def verify_otp(request):
     )
     user.save()
 
-    # 2) Delete temp data
+    # Delete temp data
     temp.delete()
 
     return Response({
@@ -165,6 +160,7 @@ def verify_otp(request):
         "mobile": user.mobile,
         "email": user.email
     })
+
 
 
 
