@@ -34,11 +34,18 @@ def signup(request):
     mobile = data.get("mobile")
     password = data.get("password")
 
-    # 1) Validate Roll NO format
-    if not re.match(r"^\d{2}(BCA|IT)\d{3}$", rollno.upper()):
-        return Response({"error": "Roll no must be like 23BCA119 or 23IT131"}, status=400)
+    # Validate required fields
+    if not all([username, rollno, email, mobile, password]):
+        return Response({"error": "All fields are required"}, status=400)
 
-    # 2) Prevent duplicate user accounts
+    # Validate roll number format
+    try:
+        if not re.match(r"^\d{2}(BCA|IT)\d{3}$", rollno.upper()):
+            return Response({"error": "Roll no must be like 23BCA119 or 23IT131"}, status=400)
+    except Exception:
+        return Response({"error": "Invalid rollno format"}, status=400)
+
+    # Prevent duplicates
     if User.objects(rollno=rollno.upper()).first():
         return Response({"error": "Roll number already exists"}, status=400)
     if User.objects(email=email).first():
@@ -46,33 +53,29 @@ def signup(request):
     if User.objects(mobile=mobile).first():
         return Response({"error": "Mobile number already exists"}, status=400)
 
-    # 🔥 3) Auto-remove previous OTP request for same email
+    # Remove old temp entry
     TempUser.objects(email=email).delete()
 
-    # 4) Generate OTP
+    # Generate OTP
     otp = random.randint(100000, 999999)
 
-    # 5) Send email
-    send_mail(
-    subject="TechNova Fest – OTP Verification (IT Club • DNiCA)",
-    message=(
-        f"Hello,\n\n"
-        f"Thank you for registering for *TechNova Fest*, proudly organized by the IT Club and supported by DNiCA.\n\n"
-        f"Your One-Time Password (OTP) for verification is: {otp}\n"
-        f"This code is valid for 5 minutes.\n\n"
-        f"Please do not share this code with anyone for security reasons.\n\n"
-        f"Regards,\n"
-        f"IT Club\n"
-        f"DNiCA – Digital Innovation & Computing Association"
-    ),
-    from_email=None,
-    recipient_list=[email],
-    fail_silently=False,
-)
+    # Try sending email safely
+    try:
+        send_mail(
+            subject="TechNova Fest – OTP Verification (IT Club • DNiCA)",
+            message=(
+                f"Hello,\n\n"
+                f"Thank you for registering for TechNova Fest organized by the IT Club.\n\n"
+                f"Your OTP is: {otp}\nValid for 5 minutes.\n\nDo not share it.\n"
+            ),
+            from_email=None,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+    except Exception as e:
+        return Response({"error": f"Email sending failed: {str(e)}"}, status=500)
 
-
-
-    # 6) Save new TempUser
+    # Save new Temp User
     TempUser.objects.create(
         username=username,
         rollno=rollno.upper(),
@@ -83,6 +86,7 @@ def signup(request):
     )
 
     return Response({"msg": "OTP sent to your email"})
+
 
 @api_view(["POST"])
 def verify_otp(request):
@@ -732,3 +736,4 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
