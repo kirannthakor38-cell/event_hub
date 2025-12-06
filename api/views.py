@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import User , TempUser
+from mongoengine.errors import DoesNotExist
 
 import random
 from django.core.mail import send_mail
@@ -24,6 +25,16 @@ def hello(request):
 
 
 # SIGNUP API
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.core.mail import send_mail
+from django.utils.html import strip_tags
+import random
+import re
+
+from .models import User, TempUser
+
+
 @api_view(["POST"])
 def signup(request):
     data = request.data
@@ -34,18 +45,11 @@ def signup(request):
     mobile = data.get("mobile")
     password = data.get("password")
 
-    # Validate required fields
-    if not all([username, rollno, email, mobile, password]):
-        return Response({"error": "All fields are required"}, status=400)
+    # 1) Validate Roll No format
+    if not re.match(r"^\d{2}(BCA|IT)\d{3}$", rollno.upper()):
+        return Response({"error": "Roll no must be like 23BCA119 or 23IT131"}, status=400)
 
-    # Validate roll number format
-    try:
-        if not re.match(r"^\d{2}(BCA|IT)\d{3}$", rollno.upper()):
-            return Response({"error": "Roll no must be like 23BCA119 or 23IT131"}, status=400)
-    except Exception:
-        return Response({"error": "Invalid rollno format"}, status=400)
-
-    # Prevent duplicates
+    # 2) Prevent duplicate registration
     if User.objects(rollno=rollno.upper()).first():
         return Response({"error": "Roll number already exists"}, status=400)
     if User.objects(email=email).first():
@@ -53,29 +57,70 @@ def signup(request):
     if User.objects(mobile=mobile).first():
         return Response({"error": "Mobile number already exists"}, status=400)
 
-    # Remove old temp entry
+    # 3) Remove previous OTP request for same email
     TempUser.objects(email=email).delete()
 
-    # Generate OTP
+    # 4) Generate OTP
     otp = random.randint(100000, 999999)
 
-    # Try sending email safely
+    # 5) HTML Email Template (Brevo-friendly)
+    html_message = f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif; padding: 32px; border-radius: 12px; background: #f6f9ff; border: 1px solid #d8e4ff; line-height: 1.7;">
+    
+    <h2 style="color:#003a9e; margin-bottom: 4px; font-size: 26px;">
+        🔐 TechNova Fest – OTP Verification
+    </h2>
+    <p style="font-size: 16px; margin-top: 6px;">
+        Hello <b style="color:#000;">{username}</b>,
+    </p>
+
+    <p style="font-size: 16px; margin-top: 12px;">
+        Thank you for signing up for <b style="color:#003a9e;">TechNova Fest 2025</b>, proudly organized by 
+        <b>IT Club • DNICA</b>. We appreciate your interest in being part of this dynamic celebration of
+        innovation, creativity, and technology.
+    </p>
+
+    <div style="margin: 32px 0; text-align: center;">
+        <p style="font-size: 17px; margin-bottom: 14px;">
+            Your <b>One-Time Password (OTP)</b) for secure verification is:
+        </p>
+        <div style="background: #fff6f6; border: 2px solid #e25b5b; padding: 14px 30px; display: inline-block; border-radius: 10px;">
+            <h1 style="color:#c82323; font-size: 44px; letter-spacing: 6px; margin: 0;">
+                {otp}
+            </h1>
+        </div>
+        <p style="font-size: 15px; margin-top: 12px; color:#444;">
+            ⏳ This OTP is valid for the next <b>5 minutes</b>.
+        </p>
+    </div>
+
+    <p style="font-size: 15px; color:#c82323; margin-top: -10px;">
+        ⚠ <b>Security Notice:</b> Do not share this code with anyone. It is strictly personal and confidential.
+    </p>
+
+    <br>
+    <p style="font-size: 15px; margin-bottom: 6px;">Warm regards,</p>
+    <p style="font-size: 15px; margin-top: 0; font-weight: bold; color:#003a9e;">
+        IT Club • Digital Innovation & Computing Association (DNiCA)
+    </p>
+</div>
+"""
+
+
+    # Send Email (Brevo SMTP)
     try:
         send_mail(
             subject="TechNova Fest – OTP Verification (IT Club • DNiCA)",
-            message=(
-                f"Hello,\n\n"
-                f"Thank you for registering for TechNova Fest organized by the IT Club.\n\n"
-                f"Your OTP is: {otp}\nValid for 5 minutes.\n\nDo not share it.\n"
-            ),
-            from_email=None,
+            message=strip_tags(html_message),  # fallback plain text
+            html_message=html_message,
+            from_email=None,                   # uses DEFAULT_FROM_EMAIL automatically
             recipient_list=[email],
             fail_silently=False,
         )
     except Exception as e:
-        return Response({"error": f"Email sending failed: {str(e)}"}, status=500)
+        return Response({"error": "Email sending failed. Try again later."}, status=500)
 
-    # Save new Temp User
+    # 6) Save temporary data
     TempUser.objects.create(
         username=username,
         rollno=rollno.upper(),
@@ -100,7 +145,7 @@ def verify_otp(request):
     if str(temp.otp) != str(otp):
         return Response({"error": "Invalid OTP"}, status=400)
 
-    # Create final user
+    # 1) Create final user
     user = User(
         username=temp.username,
         rollno=temp.rollno,
@@ -110,16 +155,16 @@ def verify_otp(request):
     )
     user.save()
 
-    # Remove temporary data
+    # 2) Delete temp data
     temp.delete()
 
     return Response({
-    "msg": "Verified! Account created",
-    "username": user.username,
-    "rollno": user.rollno,
-    "mobile": user.mobile,
-    "email": user.email
-})
+        "msg": "Verified! Account created",
+        "username": user.username,
+        "rollno": user.rollno,
+        "mobile": user.mobile,
+        "email": user.email
+    })
 
 
 
@@ -449,10 +494,24 @@ def users_list_create(request):
     if request.method == "POST":
         data = json.loads(request.body.decode())
         try:
+            rollno = data.get("rollno", "").upper()
+            email = data.get("email")
+
+            # basic validation
+            if not rollno or not data.get("username") or not data.get("password") or not email:
+                return JsonResponse({"error": "username, rollno, email and password are required"}, status=400)
+
+            # prevent duplicates
+            if User.objects(rollno=rollno).first():
+                return JsonResponse({"error": "Roll number already exists"}, status=400)
+            if User.objects(email=email).first():
+                return JsonResponse({"error": "Email already exists"}, status=400)
+
             user = User(
                 username=data["username"],
-                rollno=data["rollno"],
-                mobile=data["mobile"],
+                rollno=rollno,
+                mobile=data.get("mobile", ""),
+                email=email,
                 password=data["password"]
             )
             user.save()
@@ -463,9 +522,9 @@ def users_list_create(request):
 
 @csrf_exempt
 def user_detail(request, rollno):
-    try:
-        user = User.objects.get(rollno=rollno)
-    except User.DoesNotExist:
+    rollno_upper = (rollno or "").upper()
+    user = User.objects(rollno=rollno_upper).first()
+    if not user:
         return JsonResponse({"error": "User not found"}, status=404)
 
     if request.method == "GET":
@@ -475,31 +534,58 @@ def user_detail(request, rollno):
         data = json.loads(request.body.decode())
         user.username = data.get("username", user.username)
         user.mobile = data.get("mobile", user.mobile)
-        user.password = data.get("password", user.password)
+        user.email = data.get("email", user.email)
+        # only update password if provided
+        if "password" in data and data.get("password"):
+            user.password = data.get("password")
         user.save()
         return JsonResponse({"message": "User updated"})
-
-    # Support PATCH for partial updates (e.g., admin updating password)
-    if request.method == "PATCH":
-        try:
-            data = json.loads(request.body.decode())
-        except Exception:
-            return JsonResponse({"error": "Invalid JSON"}, status=400)
-
-        # Only update provided fields
-        if "username" in data:
-            user.username = data.get("username")
-        if "mobile" in data:
-            user.mobile = data.get("mobile")
-        if "password" in data:
-            user.password = data.get("password")
-
-        user.save()
-        return JsonResponse({"message": "User patched"})
 
     if request.method == "DELETE":
         user.delete()
         return JsonResponse({"message": "User deleted"})
+
+
+@csrf_exempt
+def admin_change_user_password(request, rollno):
+    # POST only
+    if request.method != "POST":
+        return JsonResponse({"error": "POST request required"}, status=405)
+
+    # Check Authorization header for admin JWT
+    auth = request.META.get("HTTP_AUTHORIZATION") or request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer "):
+        return JsonResponse({"error": "Authorization required"}, status=401)
+    token = auth.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        return JsonResponse({"error": "Token expired"}, status=401)
+    except jwt.InvalidTokenError:
+        return JsonResponse({"error": "Invalid token"}, status=401)
+
+    # check admin exists
+    admin_user = AdminRadhe.objects(username=payload.get("username")).first()
+    if not admin_user:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    # parse body
+    try:
+        data = json.loads(request.body.decode())
+    except Exception:
+        return JsonResponse({"error": "Invalid request body"}, status=400)
+
+    new_password = data.get("new_password")
+    if not new_password:
+        return JsonResponse({"error": "new_password is required"}, status=400)
+
+    user = User.objects(rollno=(rollno or "").upper()).first()
+    if not user:
+        return JsonResponse({"error": "User not found"}, status=404)
+
+    user.password = new_password
+    user.save()
+    return JsonResponse({"message": "Password updated"})
 
 
 # -------------------------------------------------------------------
@@ -584,6 +670,23 @@ def registration_detail(request, reg_id):
 
     if request.method == "GET":
         return JsonResponse(doc(reg))
+
+    if request.method == "PATCH":
+        try:
+            data = json.loads(request.body.decode())
+        except Exception:
+            return JsonResponse({"error": "Invalid request body"}, status=400)
+
+        # allow partial update of score
+        if "score" in data:
+            try:
+                reg.score = int(data.get("score", reg.score))
+            except Exception:
+                return JsonResponse({"error": "Score must be an integer"}, status=400)
+            reg.save()
+            return JsonResponse({"message": "Registration score updated"})
+        else:
+            return JsonResponse({"error": "No updatable fields provided"}, status=400)
 
     if request.method == "PUT":
         data = json.loads(request.body.decode())
@@ -736,4 +839,3 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
-
