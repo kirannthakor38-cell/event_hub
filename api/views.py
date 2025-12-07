@@ -63,7 +63,7 @@ def send_otp_email(email, otp):
     Retrieves the API key securely from environment variables.
     """
     # FIX: Get the API key securely from the environment
-    brevo_api_key = "xsmtpsib-29af70e20b1fc5606c54f07864535cd0cde688972443523f9276595e214fd7dd-KBkJ7E9yuC5Ld9Eb"
+    brevo_api_key = "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"
     if not brevo_api_key:
         # Crucial for deployment reliability: Raises error if not set
         raise EnvironmentError("BREVO_API_KEY environment variable is not set.")
@@ -877,6 +877,7 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
 
 
 
