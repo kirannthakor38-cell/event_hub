@@ -122,6 +122,7 @@ import random # Assuming this is imported at the top of your file
 def signup(request):
     data = request.data
     email = data.get("email")
+    rollno = data.get("rollno")
 
     if not email:
         return Response({"error": "Email is required"}, status=400)
@@ -898,6 +899,7 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
 
 
 
