@@ -115,15 +115,33 @@ def send_otp_email(email, otp):
 # -----------------------------------
 # SIGNUP → Create TempUser & Send OTP (FIXED)
 # -----------------------------------
+import random # Assuming this is imported at the top of your file
+# Assuming TempUser and User models are correctly imported
+
 @api_view(["POST"])
 def signup(request):
     data = request.data
-
     email = data.get("email")
+
     if not email:
         return Response({"error": "Email is required"}, status=400)
     
-    # 1. Database Operations (Use a try/except for DB reliability)
+    # 🛑 NEW: Check if the email is already registered in the permanent User collection
+    try:
+        # User.objects(email=email).first() checks for an existing user by email.
+        if User.objects(email=email).first():
+            return Response(
+                {"error": "This email is already registered. Please log in or use a different email."}, 
+                status=400
+            )
+    except Exception as e:
+        # Catches MongoDB connection errors during the check
+        return Response(
+            {"error": "Database error while checking existing user status.", "details": str(e)}, 
+            status=500
+        )
+    
+    # --- 1. Database Operations (TempUser Creation) ---
     try:
         # Remove any previous pending OTP for same email
         TempUser.objects(email=email).delete()
@@ -139,20 +157,16 @@ def signup(request):
             otp=otp
         )
     except Exception as e:
-        # Catches MongoDB connection errors, validation errors, etc.
+        # Catches MongoDB connection errors, validation errors, etc., during creation
         return Response({"error": "Failed to save signup data. Check database connection.", "details": str(e)}, status=500)
 
 
-    # 2. External API Call (Use a more specific try/except for email sending)
+    # --- 2. External API Call (Email Sending) ---
     try:
         send_otp_email(email, otp)
     except EnvironmentError as e:
-        # Handles missing API key (from the fix in send_otp_email)
         return Response({"error": "Server Configuration Error: " + str(e)}, status=500)
     except Exception as e:
-        # Handles general Brevo API failures (e.g., rate limits, invalid sender)
-        # Note: If this fails, the TempUser record is still created, which is usually fine
-        # as the user can request a resend later.
         return Response({"error": "Failed to send OTP email", "details": str(e)}, status=500)
 
     return Response({"message": "OTP sent to email"})
@@ -877,6 +891,7 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
 
 
 
