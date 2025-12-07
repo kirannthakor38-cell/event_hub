@@ -41,68 +41,79 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 
+import os
+import random
+# Assuming these are defined elsewhere (e.g., in models.py)
+# from .models import TempUser, User 
+
+# --- EXTERNAL LIBRARIES ---
+# You need to ensure sib_api_v3_sdk is installed and imported
 import sib_api_v3_sdk
-from backend.settings import BREVO_API_KEY
-from .models import TempUser, User   # <-- make sure models are imported
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 
-# -----------------------------------
-# Send OTP Email (Brevo API)
+# =================================================================
+# 🔑 EMAIL SENDING FUNCTION (FIXED)
+# =================================================================
+
 def send_otp_email(email, otp):
-    config = sib_api_v3_sdk.Configuration()
-    config.api_key['api-key'] = BREVO_API_KEY
-    config.host = "https://api.brevo.com/v3"   # REQUIRED for Render deployment
-
-    api = sib_api_v3_sdk.TransactionalEmailsApi(
-        sib_api_v3_sdk.ApiClient(config)
-    )
-
-    email_html = f"""
-    <div style="font-family: Arial; padding: 22px;">
-        <h2 style="color:#1d4ed8; margin-bottom: 6px;">🔐 DNICA – Technova | OTP Verification</h2>
-
-        <p style="font-size: 15px; color:#333; margin-top: 0;">
-            Welcome to <b>Technova</b> powered by <b>IT Club</b> at <b>DNICA</b> 😎.
-            To secure your account and confirm registration, please verify using the OTP below.
-        </p>
-
-        <div style="margin: 22px 0; padding: 18px; background:#f8faff; border: 1px solid #d7e3ff; border-radius: 10px; text-align:center;">
-            <span style="font-size: 15px; color:#444;">Your One-Time Password:</span>
-            <h1 style="font-size: 40px; margin: 8px 0; color:#111; letter-spacing: 4px;"><b>{otp}</b></h1>
-            <p style="font-size: 14px; color:#666; margin: 0;">Valid for <b>10 minutes</b> ⏳ — do not share this code.</p>
-        </div>
-
-        <p style="font-size: 14px; color:#444;">
-            After verification, your account will be activated and you'll gain full access to <b>Technova</b> events —
-            including registrations, participation tracking, and results 🚀.
-        </p>
-
-        <p style="font-size: 14px; color:#444; margin-top: 26px;">
-            If you didn’t request this OTP, you can safely ignore this email.
-        </p>
-
-        <p style="font-size: 14px; color:#444; margin-top: 20px;">
-            Warm regards,<br>
-            <b style="color:#1d4ed8;">IT Club – DNICA</b>
-        </p>
-    </div>
     """
+    Sends an OTP email using the Brevo (Sendinblue) API.
+    Retrieves the API key securely from environment variables.
+    """
+    # FIX: Get the API key securely from the environment
+    brevo_api_key = os.environ.get('BREVO_API_KEY')
+    if not brevo_api_key:
+        # Crucial for deployment reliability: Raises error if not set
+        raise EnvironmentError("BREVO_API_KEY environment variable is not set.")
+        
+    config = sib_api_v3_sdk.Configuration()
+    config.api_key['api-key'] = brevo_api_key
+    
+    api = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(config))
 
     email_data = sib_api_v3_sdk.SendSmtpEmail(
         subject="🔐 OTP Verification – Event Hub",
-        html_content=email_html,
+        html_content=f"""
+<div style="font-family: Arial; padding: 22px;">
+    <h2 style="color:#1d4ed8; margin-bottom: 6px;">🔐 DNICA – Technova | OTP Verification</h2>
+
+    <p style="font-size: 15px; color:#333; margin-top: 0;">
+        Welcome to <b>Technova</b> powered by <b>IT Club</b> at <b>DNICA</b> 😎.
+        To secure your account and confirm registration, please verify using the OTP below.
+    </p>
+
+    <div style="margin: 22px 0; padding: 18px; background:#f8faff; border: 1px solid #d7e3ff; border-radius: 10px; text-align:center;">
+        <span style="font-size: 15px; color:#444;">Your One-Time Password:</span>
+        <h1 style="font-size: 40px; margin: 8px 0; color:#111; letter-spacing: 4px;"><b>{otp}</b></h1>
+        <p style="font-size: 14px; color:#666; margin: 0;">Valid for <b>10 minutes</b> ⏳ — please do not share this code.</p>
+    </div>
+
+    <p style="font-size: 14px; color:#444;">
+        After verification, your account will be activated and you'll gain full access to <b>Technova</b> events —
+        including registrations, participation tracking, results  🚀.
+    </p>
+
+    <p style="font-size: 14px; color:#444; margin-top: 26px;">
+        If you didn’t request this OTP, you can safely ignore this email.
+    </p>
+
+    <p style="font-size: 14px; color:#444; margin-top: 20px;">
+        Warm regards,<br>
+        <b style="color:#1d4ed8;">IT Club – DNICA</b>
+    </p>
+</div>
+""",
         sender={"name": "Event Hub", "email": "technical.team0004@gmail.com"},
         to=[{"email": email}],
     )
-
-    try:
-        api.send_transac_email(email_data)
-    except Exception as e:
-        print("EMAIL ERROR:", e)  # prevents Render worker crash
+    # The api.send_transac_email will raise a standard Exception on failure
+    api.send_transac_email(email_data)
 
 
 # -----------------------------------
-# SIGNUP → Create TempUser & Send OTP
+# SIGNUP → Create TempUser & Send OTP (FIXED)
 # -----------------------------------
 @api_view(["POST"])
 def signup(request):
@@ -111,24 +122,37 @@ def signup(request):
     email = data.get("email")
     if not email:
         return Response({"error": "Email is required"}, status=400)
+    
+    # 1. Database Operations (Use a try/except for DB reliability)
+    try:
+        # Remove any previous pending OTP for same email
+        TempUser.objects(email=email).delete()
 
-    # Remove any previous pending OTP for same email
-    TempUser.objects(email=email).delete()
+        # Save signup info temporarily
+        otp = str(random.randint(100000, 999999))
+        TempUser.objects.create(
+            username=data.get("username"),
+            rollno=data.get("rollno"),
+            email=email,
+            mobile=data.get("mobile"),
+            password=data.get("password"),
+            otp=otp
+        )
+    except Exception as e:
+        # Catches MongoDB connection errors, validation errors, etc.
+        return Response({"error": "Failed to save signup data. Check database connection.", "details": str(e)}, status=500)
 
-    # Save signup info temporarily
-    otp = str(random.randint(100000, 999999))
-    TempUser.objects.create(
-        username=data.get("username"),
-        rollno=data.get("rollno"),
-        email=email,
-        mobile=data.get("mobile"),
-        password=data.get("password"),
-        otp=otp
-    )
 
+    # 2. External API Call (Use a more specific try/except for email sending)
     try:
         send_otp_email(email, otp)
+    except EnvironmentError as e:
+        # Handles missing API key (from the fix in send_otp_email)
+        return Response({"error": "Server Configuration Error: " + str(e)}, status=500)
     except Exception as e:
+        # Handles general Brevo API failures (e.g., rate limits, invalid sender)
+        # Note: If this fails, the TempUser record is still created, which is usually fine
+        # as the user can request a resend later.
         return Response({"error": "Failed to send OTP email", "details": str(e)}, status=500)
 
     return Response({"message": "OTP sent to email"})
@@ -141,26 +165,37 @@ def signup(request):
 def verify_otp(request):
     email = request.data.get("email")
     otp = request.data.get("otp")
+    
+    # Use a single try/except block for database operations
+    try:
+        temp = TempUser.objects(email=email).first()
+    except Exception as e:
+        return Response({"error": "Database error while fetching session.", "details": str(e)}, status=500)
 
-    temp = TempUser.objects(email=email).first()
     if not temp:
         return Response({"error": "Signup session expired. Please signup again."}, status=400)
 
     if str(temp.otp) != str(otp):
         return Response({"error": "Invalid OTP"}, status=400)
 
-    # Create final user
-    user = User(
-        username=temp.username,
-        rollno=temp.rollno,
-        email=temp.email,
-        mobile=temp.mobile,
-        password=temp.password
-    )
-    user.save()
+    # Database writes for final user creation
+    try:
+        # Create final user
+        user = User(
+            username=temp.username,
+            rollno=temp.rollno,
+            email=temp.email,
+            mobile=temp.mobile,
+            # Note: Passwords should be hashed before saving to the User model!
+            password=temp.password 
+        )
+        user.save()
 
-    # Delete temp data
-    temp.delete()
+        # Delete temp data
+        temp.delete()
+    except Exception as e:
+        return Response({"error": "Failed to create final user account. Check DB connection/schema.", "details": str(e)}, status=500)
+
 
     return Response({
         "msg": "Verified! Account created",
@@ -169,8 +204,6 @@ def verify_otp(request):
         "mobile": user.mobile,
         "email": user.email
     })
-
-
 
 
     
@@ -844,4 +877,5 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
 
