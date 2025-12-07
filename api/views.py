@@ -118,20 +118,40 @@ def send_otp_email(email, otp):
 import random # Assuming this is imported at the top of your file
 # Assuming TempUser and User models are correctly imported
 
+import random # Assuming this is imported at the top of your file
+# Assuming TempUser and User models are correctly imported
+
 @api_view(["POST"])
 def signup(request):
     data = request.data
     email = data.get("email")
+    rollno = data.get("rollno") # Retrieve rollno from request data
 
+    # 1. Basic Validation Check
     if not email:
         return Response({"error": "Email is required"}, status=400)
+    if not rollno:
+        return Response({"error": "Roll number is required"}, status=400)
     
-    # 🛑 NEW: Check if the email is already registered in the permanent User collection
+    # Ensure rollno is uppercase for consistent checking (as used in the login view)
+    rollno = rollno.upper()
+    
+    # 🛑 NEW: Check if the roll number or email is already registered 
     try:
-        # User.objects(email=email).first() checks for an existing user by email.
-        if User.objects(email=email).first():
+        # Check if user exists by email OR rollno
+        existing_user = User.objects(Q(email=email) | Q(rollno=rollno)).first()
+        
+        if existing_user:
+            # Determine which field caused the conflict for a specific error message
+            if existing_user.email == email:
+                error_msg = "This email is already registered. Please log in or use a different email."
+            elif existing_user.rollno == rollno:
+                error_msg = "This roll number is already registered."
+            else:
+                error_msg = "A user with this email or roll number already exists."
+
             return Response(
-                {"error": "This email is already registered. Please log in or use a different email."}, 
+                {"error": error_msg},
                 status=400
             )
     except Exception as e:
@@ -141,7 +161,7 @@ def signup(request):
             status=500
         )
     
-    # --- 1. Database Operations (TempUser Creation) ---
+    # --- 2. Database Operations (TempUser Creation) ---
     try:
         # Remove any previous pending OTP for same email
         TempUser.objects(email=email).delete()
@@ -150,7 +170,7 @@ def signup(request):
         otp = str(random.randint(100000, 999999))
         TempUser.objects.create(
             username=data.get("username"),
-            rollno=data.get("rollno"),
+            rollno=rollno, # Use the uppercased rollno
             email=email,
             mobile=data.get("mobile"),
             password=data.get("password"),
@@ -161,7 +181,7 @@ def signup(request):
         return Response({"error": "Failed to save signup data. Check database connection.", "details": str(e)}, status=500)
 
 
-    # --- 2. External API Call (Email Sending) ---
+    # --- 3. External API Call (Email Sending) ---
     try:
         send_otp_email(email, otp)
     except EnvironmentError as e:
@@ -891,6 +911,7 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
 
 
 
