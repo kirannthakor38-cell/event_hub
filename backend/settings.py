@@ -178,7 +178,8 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "9d76b4001@smtp-brevo.com"
 EMAIL_HOST_PASSWORD = "xsmtpsib-29af70e20b1fc5606c54f07864535cd0cde688972443523f9276595e214fd7dd-avUbnXFgBSpTXzlP"
 DEFAULT_FROM_EMAIL = "technical.team0004@gmail.com"
-BREVO_API_KEY = "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"
+BREVO_API_KEY = "ueqk gmve casx enuq"
+
 
 
 
