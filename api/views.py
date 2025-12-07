@@ -124,64 +124,69 @@ import random # Assuming this is imported at the top of your file
 @api_view(["POST"])
 def signup(request):
     data = request.data
-    email = data.get("email")
-    rollno = data.get("rollno") # Retrieve rollno from request data
 
-    # 1. Basic Validation Check
+    email = data.get("email")
+
     if not email:
         return Response({"error": "Email is required"}, status=400)
-    if not rollno:
-        return Response({"error": "Roll number is required"}, status=400)
-    
-    # Ensure rollno is uppercase for consistent checking (as used in the login view)
-    rollno = rollno.upper()
-    
-    # 🛑 NEW: Check if the roll number or email is already registered 
-    try:
-        # Check if user exists by email OR rollno
-        existing_user = User.objects(Q(email=email) | Q(rollno=rollno)).first()
-        
-        if existing_user:
-            # Determine which field caused the conflict for a specific error message
-            if existing_user.email == email:
-                error_msg = "This email is already registered. Please log in or use a different email."
-            elif existing_user.rollno == rollno:
-                error_msg = "This roll number is already registered."
-            else:
-                error_msg = "A user with this email or roll number already exists."
 
+    # --- Roll Number Validation + Duplicate Check ---
+    rollno = data.get("rollno", "")
+    rollno = rollno.upper()  # Convert to uppercase
+
+    import re
+    pattern = r'^\d{2}(IT|BCA)\d{3}$'
+
+    if not re.match(pattern, rollno):
+        return Response(
+            {"error": "Invalid roll number format. Use example: 23BCA234 or 24IT789"},
+            status=400
+        )
+
+    # Check if roll number already registered
+    try:
+        if User.objects(rollno=rollno).first():
             return Response(
-                {"error": error_msg},
+                {"error": "This roll number is already registered. Please log in or use a different roll number."},
                 status=400
             )
     except Exception as e:
-        # Catches MongoDB connection errors during the check
+        return Response(
+            {"error": "Database error while checking roll number.", "details": str(e)},
+            status=500
+        )
+
+    # 1. Database Operations (Use a try/except for DB reliability)
+    try:
+        if User.objects(email=email).first():
+            return Response(
+                {"error": "This email is already registered. Please log in or use a different email."}, 
+                status=400
+            )
+    except Exception as e:
         return Response(
             {"error": "Database error while checking existing user status.", "details": str(e)}, 
             status=500
         )
     
-    # --- 2. Database Operations (TempUser Creation) ---
+    # --- 1. Database Operations (TempUser Creation) ---
     try:
-        # Remove any previous pending OTP for same email
         TempUser.objects(email=email).delete()
 
-        # Save signup info temporarily
-        otp = str(random.randint(100000, 999999))
+        otp = generate_otp()
+
         TempUser.objects.create(
-            username=data.get("username"),
-            rollno=rollno, # Use the uppercased rollno
             email=email,
-            mobile=data.get("mobile"),
-            password=data.get("password"),
+            rollno=rollno,
             otp=otp
         )
     except Exception as e:
-        # Catches MongoDB connection errors, validation errors, etc., during creation
-        return Response({"error": "Failed to save signup data. Check database connection.", "details": str(e)}, status=500)
+        return Response(
+            {"error": "Failed to save signup data. Check database connection.", "details": str(e)},
+            status=500
+        )
 
-
-    # --- 3. External API Call (Email Sending) ---
+    # 2. External API Call (Email Sending)
     try:
         send_otp_email(email, otp)
     except EnvironmentError as e:
@@ -190,6 +195,7 @@ def signup(request):
         return Response({"error": "Failed to send OTP email", "details": str(e)}, status=500)
 
     return Response({"message": "OTP sent to email"})
+
 
 
 # -----------------------------------
@@ -911,6 +917,7 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
 
 
 
