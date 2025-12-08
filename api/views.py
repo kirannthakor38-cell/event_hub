@@ -647,7 +647,6 @@ def admin_change_user_password(request, rollno):
     user.save()
     return JsonResponse({"message": "Password updated"})
 
-
 # -------------------------------------------------------------------
 # EVENTS CRUD
 # -------------------------------------------------------------------
@@ -899,6 +898,7 @@ def admin_detail(request, username):
     if request.method == "DELETE":
         a.delete()
         return JsonResponse({"message": "Admin deleted"})
+
 
 
 
