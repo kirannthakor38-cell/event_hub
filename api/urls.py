@@ -25,6 +25,7 @@ urlpatterns = [
 
     path("admin/users/", views.users_list_create),
     path("admin/users/<str:rollno>/", views.user_detail),
+   path("admin/users/<str:rollno>/change-password/", views.admin_change_user_password),
 
     # EVENTS
     path("admin/events/", views.events_list_create),
