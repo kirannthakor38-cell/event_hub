@@ -14,7 +14,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "insecure-dev-key"  # ⚠ change before public release
 DEBUG = True
 
-ALLOWED_HOSTS = ["*", ".a.run.app"]   # Allow Cloud Run & public domain
+ALLOWED_HOSTS = [
+    "technova456.vercel.app",
+] # Allow Cloud Run & public domain
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # -------------------------------------------------------------------
@@ -112,17 +114,9 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = False
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    "https://technova456.vercel.app",
 ]
 
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.web\.app$",
-    r"^https://.*\.firebaseapp\.com$",
-    r"^https://.*\.a\.run\.app$",
-    r"^https://.*\.vercel\.app$",
-    r"^https://.*\.netlify\.app$",
-]
 
 CORS_ALLOW_CREDENTIALS = True
 SESSION_COOKIE_SAMESITE = "None"
@@ -178,6 +172,7 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "9d76b4001@smtp-brevo.com"
 EMAIL_HOST_PASSWORD = "xsmtpsib-29af70e20b1fc5606c54f07864535cd0cde688972443523f9276595e214fd7dd-KBkJ7E9yuC5Ld9Eb"
 DEFAULT_FROM_EMAIL = "technical.team0004@gmail.com"
+
 
 
 
