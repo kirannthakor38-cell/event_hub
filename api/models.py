@@ -37,8 +37,7 @@ class Registration(Document):
     event_id = StringField(required=True)
     rollno = StringField(required=True)
     username = StringField(required=True)
-    score = IntField(default=0)   # ⭐ ADD SCORE FIELD
-
+    score = StringField(default="")   # ⭐ ADD SCORE FIELD
 
 
 
@@ -69,6 +68,7 @@ from mongoengine import Document, StringField
 class AdminRadhe(Document):
     username = StringField(required=True)
     password = StringField(required=True)
+
 
 
 
